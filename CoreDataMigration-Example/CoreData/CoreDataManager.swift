@@ -10,83 +10,51 @@ import Foundation
 import CoreData
 
 class CoreDataManager {
-    
-    let migrator: CoreDataMigratorProtocol
-    private let storeType: String
-    
-    lazy var persistentContainer: NSPersistentContainer = {
-        let persistentContainer = NSPersistentContainer(name: "CoreDataMigration_Example")
-        let description = persistentContainer.persistentStoreDescriptions.first
-        description?.shouldInferMappingModelAutomatically = false //inferred mapping will be handled else where
-        description?.shouldMigrateStoreAutomatically = false
-        description?.type = storeType
-        
-        return persistentContainer
-    }()
-    
+    private let container: NSPersistentContainer
+
     lazy var backgroundContext: NSManagedObjectContext = {
-        let context = self.persistentContainer.newBackgroundContext()
+        let context = self.container.newBackgroundContext()
         context.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
-        
+
         return context
     }()
-    
+
     lazy var mainContext: NSManagedObjectContext = {
-        let context = self.persistentContainer.viewContext
+        let context = self.container.viewContext
         context.automaticallyMergesChangesFromParent = true
-        
+
         return context
     }()
-    
+
     // MARK: - Singleton
     
     static let shared = CoreDataManager()
     
     // MARK: - Init
     
-    init(storeType: String = NSSQLiteStoreType, migrator: CoreDataMigratorProtocol = CoreDataMigrator()) {
-        self.storeType = storeType
-        self.migrator = migrator
-    }
-    
-    // MARK: - SetUp
-    
-    func setup(completion: @escaping () -> Void) {
-        loadPersistentStore {
-            completion()
-        }
-    }
-    
-    // MARK: - Loading
-    
-    private func loadPersistentStore(completion: @escaping () -> Void) {
-        migrateStoreIfNeeded {
-            self.persistentContainer.loadPersistentStores { description, error in
-                guard error == nil else {
-                    fatalError("was unable to load store \(error!)")
-                }
-                
-                completion()
+    init() {
+        self.container = NSPersistentContainer(name: "CoreDataMigration_Example")
+
+        do {
+            let url = try self.container.prepareForManualSQLiteMigration()
+
+            guard let migration = try SQLiteProgressiveMigration(
+                originalStoreURL: url,
+                bundle: .main,
+                modelName: "CoreDataMigration_Example",
+                modelVersions: CoreDataMigrationVersion.allCases.map(\.rawValue),
+                mappingModels: [nil, "Migration2to3ModelMapping", nil]
+            ) else {
+                return
             }
-        }
-    }
-    
-    private func migrateStoreIfNeeded(completion: @escaping () -> Void) {
-        guard let storeURL = persistentContainer.persistentStoreDescriptions.first?.url else {
-            fatalError("persistentContainer was not set up properly")
-        }
-        
-        if migrator.requiresMigration(at: storeURL, toVersion: CoreDataMigrationVersion.current) {
-            DispatchQueue.global(qos: .userInitiated).async {
-                self.migrator.migrateStore(at: storeURL, toVersion: CoreDataMigrationVersion.current)
-                
-                DispatchQueue.main.async {
-                    completion()
-                }
+
+            try migration.performMigration { (currentStep, numberOfSteps) in
+
             }
-        } else {
-            completion()
+        } catch {
+            print(error)
         }
+
+        self.container.loadPersistentStores(completionHandler: { _, _ in })
     }
 }
-

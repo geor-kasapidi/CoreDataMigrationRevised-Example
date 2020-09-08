@@ -21,12 +21,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             FileManager.clearApplicationSupportDirectoryContents()
             return true
         }
-        
-        CoreDataManager.shared.setup {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { // just for example purposes
-                self.presentMainUI()
-            }
-        }
+
+        _ = CoreDataManager.shared
+
+        self.presentMainUI()
         
         return true
     }
